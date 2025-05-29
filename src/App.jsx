@@ -847,17 +847,12 @@ function App() {
           <button
             onClick={() => {
               setChatOpen(true);
-              setChatMessages(msgs => {
-                if (msgs.length === 0) {
-                  return [
-                    {
-                      user: "DAKA AI",
-                      text: "Hi，我是 Daka AI，你的本地生活向导和AI朋友！🌟 无论你想打卡哪里、找美食、查攻略，还是纯聊天，都可以找我！快来问我任何关于广州、地图、生活玩乐的问题吧！"
-                    }
-                  ];
+              setChatMessages([
+                {
+                  user: "DAKA AI",
+                  text: "Hi，我是 Daka AI，你的本地生活向导和AI朋友！🌟 无论你想打卡哪里、找美食、查攻略，还是纯聊天，都可以找我！快来问我任何关于广州、地图、生活玩乐的问题吧！"
                 }
-                return msgs;
-              });
+              ]);
             }}
             style={{
               background: "#fff",
@@ -914,7 +909,13 @@ function App() {
                 {aiMode ? "DAKA AI 模式" : "普通"}
               </button>
               Daka 聊天室
-              <button onClick={() => setChatOpen(false)} style={{ float: "right", background: "none", color: "#fff", border: "none", fontSize: 20, cursor: "pointer" }}>×</button>
+              <button
+                onClick={() => {
+                  setChatOpen(false);
+                  setChatMessages([]);
+                }}
+                style={{ float: "right", background: "none", color: "#fff", border: "none", fontSize: 20, cursor: "pointer" }}
+              >×</button>
             </div>
             <div style={{
               flex: 1, overflowY: "auto", background: "#111", borderRadius: 8, padding: 8, marginBottom: 8, color: "#eee"
