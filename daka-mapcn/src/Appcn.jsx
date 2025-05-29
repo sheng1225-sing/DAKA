@@ -53,6 +53,8 @@ const mockPlaces = [
 function Appcn() {
   // 移动端判断
   const isMobile = window.innerWidth < 768;
+  // 更小屏手机判断
+  const isSmallMobile = window.innerWidth < 375;
   // 地图选择按钮统一样式
   const btnStyle = {
     width: 420,
@@ -449,10 +451,10 @@ function Appcn() {
           ref={dragMapRef}
           style={{
             position: "absolute",
-            top: isMobile ? 20 : 40,
-            left: isMobile ? 20 : 410,
-            width: isMobile ? "90vw" : 700,
-            height: isMobile ? "50vh" : 500,
+            top: isSmallMobile ? 2 : isMobile ? 16 : 40,
+            left: isSmallMobile ? 2 : isMobile ? 16 : 410,
+            width: isSmallMobile ? "94vw" : isMobile ? "88vw" : 700,
+            height: isSmallMobile ? "35vh" : isMobile ? "45vh" : 500,
             zIndex: 10,
             background: "#222",
             borderRadius: 16,
@@ -531,10 +533,10 @@ function Appcn() {
                 }
               : {
                   position: "absolute",
-                  bottom: 40,
-                  right: 40,
-                  width: 360,
-                  maxHeight: "80vh",
+                  bottom: isSmallMobile ? 10 : 40,
+                  right: isSmallMobile ? 10 : 40,
+                  width: isSmallMobile ? "94vw" : isMobile ? "90vw" : 360,
+                  maxHeight: isSmallMobile ? "60vh" : "80vh",
                   zIndex: 9999,
                   background: "#222",
                   borderRadius: 20,
