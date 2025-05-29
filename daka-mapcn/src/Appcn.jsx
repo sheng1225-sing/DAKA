@@ -115,6 +115,14 @@ function Appcn() {
   const [aiThinking, setAiThinking] = useState(false);
   // 聊天室展开/收起
   const [chatExpanded, setChatExpanded] = useState(false);
+  // 聊天滚动到底部锚点
+  const chatEndRef = useRef(null);
+  // 聊天消息变化时滚动到底部
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, aiThinking]);
   // 地图展开/收起
   const [mapExpanded, setMapExpanded] = useState(false);
 
@@ -573,7 +581,6 @@ function Appcn() {
             <div
               style={{
                 width: "100%",
-                flex: 1,
                 background: "#222",
                 borderRadius: 14,
                 padding: 16,
@@ -602,14 +609,18 @@ function Appcn() {
               <div style={{ marginBottom: 8, fontWeight: "bold", fontSize: 18, color: "#fff" }}>Daka 聊天室</div>
               <div style={{
                 flex: 1,
-                maxHeight: "60vh",
-                minHeight: "0",
                 overflowY: "auto",
                 background: "#111",
                 borderRadius: 8,
                 padding: 8,
                 marginBottom: 8,
-                color: "#eee"
+                color: "#eee",
+                maxHeight: isSmallMobile
+                  ? "calc(60vh - 120px)"
+                  : isMobile
+                  ? "calc(80vh - 120px)"
+                  : "calc(80vh - 120px)",
+                scrollBehavior: "smooth"
               }}>
                 {chatMessages.length === 0 ? <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div> : (
                   chatMessages.map((msg, i) => (
@@ -624,17 +635,34 @@ function Appcn() {
                     DAKA AI 正在输入...
                   </div>
                 )}
+                <div ref={chatEndRef} />
               </div>
-              <input
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") sendMessage();
-                }}
-                placeholder="输入消息并回车发送"
-                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff" }}
-              />
-              <button onClick={sendMessage} style={{ marginTop: 8, width: "100%", borderRadius: 6, background: "#7ed957", color: "#000", border: "none", padding: 10, fontWeight: "bold" }}>发送</button>
+              <div style={{ width: "100%" }}>
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") sendMessage();
+                  }}
+                  placeholder="输入消息并回车发送"
+                  style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff" }}
+                />
+                <button
+                  onClick={sendMessage}
+                  style={{
+                    marginTop: 8,
+                    width: "100%",
+                    borderRadius: 6,
+                    background: "#7ed957",
+                    color: "#000",
+                    border: "none",
+                    padding: 10,
+                    fontWeight: "bold"
+                  }}
+                >
+                  发送
+                </button>
+              </div>
             </div>
           )}
         </div>
