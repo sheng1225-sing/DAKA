@@ -1,5 +1,5 @@
 // ===== Firebase 引入与初始化 =====
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, collection, doc, addDoc, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
 // ===== Firebase 配置与 Firestore 初始化 =====
@@ -12,7 +12,7 @@ const firebaseConfig = {
   appId: "APP_ID"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
+const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(firebaseApp);
 // ===========================
 // App 组件主入口
@@ -1143,7 +1143,7 @@ function App() {
                     <span style={{ marginLeft: 10 }}>{msg.text}</span>
                   </div>
                 ))
-              )}
+            ))}
               {chatMode === "ai" && aiThinking && (
                 <div style={{ color: "#7ed957", margin: "8px 0", fontWeight: "bold" }}>
                   DAKA AI 正在输入<span className="dot-flash">...</span>
@@ -1218,24 +1218,3 @@ export default function WrappedApp() {
     </GoogleOAuthProvider>
   );
 }
-
-  // ====== Firestore 实时消息监听 ======
-useEffect(() => {
-  if (chatMode !== "user" || !username || !targetUser) return;
-
-  const q = query(
-    collection(db, "messages"),
-    where("from", "in", [username, targetUser]),
-    where("to", "in", [username, targetUser]),
-    orderBy("timestamp", "asc")
-  );
-
-  const unsub = onSnapshot(q, (snapshot) => {
-    const msgs = snapshot.docs.map(doc => doc.data());
-    const key = username < targetUser ? `${username}_${targetUser}` : `${targetUser}_${username}`;
-    const grouped = { [key]: msgs.map(msg => ({ user: msg.from, text: msg.text })) };
-    setPrivateMessages(grouped);
-  });
-
-  return () => unsub();
-}, [chatMode, username, targetUser]);
