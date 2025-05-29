@@ -1,3 +1,7 @@
+import { placesRef, getDocs, addDoc } from "./firebase";
+import { collection, onSnapshot, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { db } from "./firebase";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword } from "firebase/auth";
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import robotIcon from "./assets/robot-ai.png";
 
@@ -80,25 +84,26 @@ function Appcn() {
     cursor: "pointer",
   };
   // -------------------- 页面主状态 ----------------------
+  // 管理员测试账户
+  const adminAccount = { email: "sing", password: "sing" };
   const [entered, setEntered] = useState(false);
+  // Firebase 匿名用户
+  const [user, setUser] = useState(null);
+  // 登录表单状态
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  // 控制是否显示注册表单
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
+  // 监听 Firebase 用户状态
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      if (u) setUser(u);
+    });
+    return () => unsubscribe();
+  }, []);
   const [selectedPlace, setSelectedPlace] = useState(null);
-  const [places, setPlaces] = useState(() => {
-    const saved = localStorage.getItem("daka_places_cn");
-    try {
-      let loaded = saved ? JSON.parse(saved) : mockPlaces;
-      loaded = loaded.map(p => ({
-        ...p,
-        name: p.name || "未命名地点",
-        imageUrl: p.imageUrl || "",
-        lat: p.lat ? Number(p.lat) : 0,
-        lng: p.lng ? Number(p.lng) : 0,
-        description: p.description || "",
-      }));
-      return loaded;
-    } catch {
-      return mockPlaces;
-    }
-  });
+  const [places, setPlaces] = useState([]);
 
   // 新marker弹窗
   const [addModal, setAddModal] = useState({ visible: false, lat: null, lng: null });
@@ -119,9 +124,13 @@ function Appcn() {
       text: "Hi，我是 Daka AI，你的本地生活向导和AI朋友！🌟 无论你想打卡哪里、找美食、查攻略，还是纯聊天，都可以找我！快来问我任何关于广州、地图、生活玩乐的问题吧！"
     }
   ]);
+  // 用户聊天室消息
+  const [userChatMessages, setUserChatMessages] = useState([]);
   const [aiThinking, setAiThinking] = useState(false);
   // 聊天室展开/收起
   const [chatExpanded, setChatExpanded] = useState(false);
+  // 聊天模式: "AI" or "User"
+  const [chatMode, setChatMode] = useState("AI"); // "AI" or "User"
   // 聊天滚动到底部锚点
   const chatEndRef = useRef(null);
   // 聊天消息变化时滚动到底部
@@ -129,7 +138,24 @@ function Appcn() {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatMessages, aiThinking]);
+  }, [chatMessages, aiThinking, userChatMessages]);
+
+  // 监听 Firebase 用户聊天室消息
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "user-messages"), orderBy("createdAt"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const messages = snapshot.docs.map(doc => doc.data());
+      // 按用户分组
+      const grouped = {};
+      messages.forEach(msg => {
+        if (!grouped[msg.user]) grouped[msg.user] = [];
+        grouped[msg.user].push(msg);
+      });
+      setUserChatMessages(grouped);
+    });
+    return () => unsubscribe();
+  }, [user]);
   // 聊天输入框移动端键盘遮挡适配
   useEffect(() => {
     const handleFocus = () => {
@@ -279,10 +305,19 @@ function Appcn() {
     };
   }, []);
 
-  // -------- 数据持久化 ---------
+  // -------- Firebase 拉取数据 ---------
   useEffect(() => {
-    localStorage.setItem("daka_places_cn", JSON.stringify(places));
-  }, [places]);
+    const fetchPlaces = async () => {
+      try {
+        const snapshot = await getDocs(placesRef);
+        const firebasePlaces = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPlaces(firebasePlaces);
+      } catch (err) {
+        console.error("获取 Firebase 地点失败：", err);
+      }
+    };
+    fetchPlaces();
+  }, []);
 
   // ------ 高德地图加载 ------
   useEffect(() => {
@@ -414,21 +449,39 @@ function Appcn() {
   // ----------- 聊天发送消息 -----------
   const sendMessage = async () => {
     if (!chatInput.trim()) return;
-    setChatMessages(msgs => [...msgs, { user: "我", text: chatInput.trim() }]);
-    setChatInput("");
+    const userMessage = chatInput.trim();
+    setChatMessages(msgs => [...msgs, { user: "我", text: userMessage }]);
     setAiThinking(true);
+    setChatInput(""); // 这里保留立即清空行为
+    setTimeout(() => {
+      const input = document.querySelector("input");
+      if (input) {
+        input.value = "";
+        input.blur();
+      }
+    }, 10);
     setTimeout(async () => {
-      // 取当前对话历史，不含本次输入
-      const msgs = [
-        ...chatMessages,
-        { user: "我", text: chatInput.trim() }
-      ];
-      // 传递全部历史，除最后一条“我”的再去掉最后一条以防重复
-      // 但此处直接传递chatMessages即可（不含本次输入），本次输入由message参数提供
-      const aiReply = await getAIReply(chatInput.trim(), chatMessages);
+      const aiReply = await getAIReply(userMessage, chatMessages);
       setChatMessages(msgs => [...msgs, { user: "DAKA AI", text: aiReply }]);
       setAiThinking(false);
     }, 500);
+  };
+
+  const sendUserMessage = async () => {
+    if (!chatInput.trim()) return;
+    await addDoc(collection(db, "user-messages"), {
+      user: user.email,
+      text: chatInput.trim(),
+      createdAt: serverTimestamp()
+    });
+    setChatInput(""); // 保留清空行为
+    setTimeout(() => {
+      const input = document.querySelector("input");
+      if (input) {
+        input.value = "";
+        input.blur();
+      }
+    }, 10);
   };
 
   // ----------- 文件转Base64 -----------
@@ -480,27 +533,177 @@ function Appcn() {
           }}
         />
         <h1 style={{ fontSize: 44, marginBottom: 20 }}>Daka 中国区</h1>
-        <button
-          onClick={() => setEntered(true)}
-          style={{
-            width: 252,
-            height: 54,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 11,
-            fontSize: "1.3rem",
-            whiteSpace: "nowrap",
-            background: "#000",
-            color: "#fff",
-            border: "3px solid #fff",
-            borderRadius: 12,
-            margin: "20px 0",
-            cursor: "pointer"
-          }}
-        >
-          🚀 开始探索
-        </button>
+        <p style={{ color: "#ccc", marginBottom: 10 }}>
+          {showRegisterForm ? "请输入邮箱和密码后点击确认注册" : "请先输入邮箱和密码再点击注册"}
+        </p>
+        {!showRegisterForm && (
+          <>
+            <input
+              type="email"
+              placeholder="邮箱"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                width: 240,
+                padding: 10,
+                marginBottom: 10,
+                fontSize: 16,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+              }}
+            />
+            <input
+              type="password"
+              placeholder="密码"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: 240,
+                padding: 10,
+                marginBottom: 20,
+                fontSize: 16,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+              }}
+            />
+          </>
+        )}
+        {/* 注册表单条件渲染 */}
+        {showRegisterForm && (
+          <>
+            <input
+              type="email"
+              placeholder="注册邮箱"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                width: 240,
+                padding: 10,
+                marginBottom: 10,
+                fontSize: 16,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+              }}
+            />
+            <input
+              type="password"
+              placeholder="注册密码"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: 240,
+                padding: 10,
+                marginBottom: 20,
+                fontSize: 16,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+              }}
+            />
+            <button
+              onClick={async () => {
+                const auth = getAuth();
+                if (!email || !password) {
+                  alert("请输入邮箱和密码后再注册！");
+                  return;
+                }
+                try {
+                  await createUserWithEmailAndPassword(auth, email, password);
+                  alert("注册成功，请返回登录页面登录！");
+                  setShowRegisterForm(false);
+                } catch (err) {
+                  if (err.code === "auth/email-already-in-use") {
+                    alert("该邮箱已注册，请返回登录页面登录！");
+                    setShowRegisterForm(false);
+                  } else {
+                    alert("注册失败：" + err.message);
+                    console.error(err);
+                  }
+                }
+              }}
+              style={{
+                width: 252,
+                height: 54,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 11,
+                fontSize: "1.3rem",
+                whiteSpace: "nowrap",
+                background: "#7ed957",
+                color: "#000",
+                border: "3px solid #fff",
+                borderRadius: 12,
+                margin: "12px 0",
+                cursor: "pointer"
+              }}
+            >
+              ✅ 确认注册
+            </button>
+          </>
+        )}
+        {/* 登录和注册按钮 */}
+        {!showRegisterForm && (
+          <>
+            <button
+              onClick={async () => {
+                // 管理员登录优先判断
+                if (email === adminAccount.email && password === adminAccount.password) {
+                  alert("管理员登录成功！");
+                  setEntered(true);
+                  return;
+                }
+                const auth = getAuth();
+                try {
+                  const result = await signInWithEmailAndPassword(auth, email, password);
+                  setUser(result.user);
+                  setEntered(true);
+                } catch (err) {
+                  alert("登录失败，请检查邮箱和密码是否正确！");
+                  console.error(err);
+                }
+              }}
+              style={{
+                width: 252,
+                height: 54,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 11,
+                fontSize: "1.3rem",
+                whiteSpace: "nowrap",
+                background: "#000",
+                color: "#fff",
+                border: "3px solid #fff",
+                borderRadius: 12,
+                margin: "20px 0",
+                cursor: "pointer"
+              }}
+            >
+              🚀 开始探索
+            </button>
+            <button
+              onClick={() => setShowRegisterForm(true)}
+              style={{
+                width: 252,
+                height: 54,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 11,
+                fontSize: "1.3rem",
+                whiteSpace: "nowrap",
+                background: "#444",
+                color: "#fff",
+                border: "3px solid #fff",
+                borderRadius: 12,
+                margin: "12px 0",
+                cursor: "pointer"
+              }}
+            >
+              📝 注册新账户
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -573,8 +776,8 @@ function Appcn() {
           style={{
             position: "absolute",
             top: isSmallMobile ? 2 : isMobile ? 16 : 40,
-            left: isSmallMobile ? 2 : isMobile ? 16 : 410,
-            width: isSmallMobile ? "94vw" : isMobile ? "88vw" : 700,
+            left: isSmallMobile ? 2 : isMobile ? 8 : 20,
+            width: isSmallMobile ? "94vw" : isMobile ? "92vw" : 640,
             height: isSmallMobile ? "35vh" : isMobile ? "45vh" : 500,
             zIndex: 10,
             background: "#222",
@@ -719,7 +922,24 @@ function Appcn() {
               >
                 收起
               </button>
-              <div style={{ marginBottom: 8, fontWeight: "bold", fontSize: 18, color: "#fff" }}>Daka 聊天室</div>
+              <div style={{ marginBottom: 8, fontWeight: "bold", fontSize: 18, color: "#fff" }}>
+                Daka 聊天室（{chatMode === "AI" ? "AI 模式" : "用户模式"}）
+                <button
+                  onClick={() => setChatMode(prev => prev === "AI" ? "User" : "AI")}
+                  style={{
+                    marginLeft: 12,
+                    fontSize: 14,
+                    background: "#444",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    cursor: "pointer"
+                  }}
+                >
+                  切换为{chatMode === "AI" ? "用户聊天室" : "AI 聊天室"}
+                </button>
+              </div>
               <div style={{
                 flex: 1,
                 overflowY: "auto",
@@ -735,15 +955,36 @@ function Appcn() {
                   : "calc(80vh - 120px)",
                 scrollBehavior: "smooth"
               }}>
-                {chatMessages.length === 0 ? <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div> : (
-                  chatMessages.map((msg, i) => (
-                    <div key={i} style={{ margin: "8px 0" }}>
-                      <span style={{ fontWeight: "bold", color: "#7ed957" }}>{msg.user}</span>
-                      <span style={{ marginLeft: 10 }}>{msg.text}</span>
-                    </div>
-                  ))
+                {chatMode === "AI" ? (
+                  chatMessages.length === 0 ? (
+                    <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div>
+                  ) : (
+                    chatMessages.map((msg, i) => (
+                      <div key={i} style={{ margin: "8px 0" }}>
+                        <span style={{ fontWeight: "bold", color: "#7ed957" }}>{msg.user}</span>
+                        <span style={{ marginLeft: 10 }}>{msg.text}</span>
+                      </div>
+                    ))
+                  )
+                ) : (
+                  Object.keys(userChatMessages).length === 0 ? (
+                    <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无用户消息</div>
+                  ) : (
+                    Object.keys(userChatMessages).map((email, i) => (
+                      <div key={i} style={{ marginBottom: 20 }}>
+                        <div style={{ fontWeight: "bold", color: "#7ed957", fontSize: 16, marginBottom: 6 }}>
+                          👤 {email}
+                        </div>
+                        {userChatMessages[email].map((msg, j) => (
+                          <div key={j} style={{ margin: "6px 0" }}>
+                            <span>{msg.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))
+                  )
                 )}
-                {aiThinking && (
+                {aiThinking && chatMode === "AI" && (
                   <div style={{ color: "#7ed957", margin: "8px 0", fontWeight: "bold" }}>
                     DAKA AI 正在输入...
                   </div>
@@ -754,14 +995,20 @@ function Appcn() {
                 <input
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") sendMessage();
+                  onKeyDown={async e => {
+                    if (e.key === "Enter") {
+                      if (chatMode === "AI") sendMessage();
+                      else sendUserMessage();
+                    }
                   }}
                   placeholder="输入消息并回车发送"
                   style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff" }}
                 />
                 <button
-                  onClick={sendMessage}
+                  onClick={async () => {
+                    if (chatMode === "AI") sendMessage();
+                    else sendUserMessage();
+                  }}
                   style={{
                     marginTop: 8,
                     width: "100%",
@@ -829,7 +1076,7 @@ function Appcn() {
                 style={{ padding: "6px 16px", borderRadius: 6, background: "#444", color: "#fff", border: "none", cursor: "pointer" }}
               >取消</button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!newPlaceName || !newPlaceImage) {
                     alert("请填写地点名称并上传图片！");
                     return;
@@ -838,18 +1085,21 @@ function Appcn() {
                     alert("没有获取到地图坐标，请点击地图后再试！");
                     return;
                   }
-                  const newId = Date.now();
-                  setPlaces(prev => [
-                    ...prev,
-                    {
-                      id: newId,
+                  try {
+                    await addDoc(placesRef, {
                       name: newPlaceName,
                       description: newPlaceDesc,
                       lat: addModal.lat,
                       lng: addModal.lng,
                       imageUrl: newPlaceImage,
-                    }
-                  ]);
+                    });
+                    // 重新拉取
+                    const snapshot = await getDocs(placesRef);
+                    const firebasePlaces = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setPlaces(firebasePlaces);
+                  } catch (err) {
+                    alert("添加失败: " + err.message);
+                  }
                   setAddModal({ visible: false, lat: null, lng: null });
                   setNewPlaceName("");
                   setNewPlaceDesc("");
