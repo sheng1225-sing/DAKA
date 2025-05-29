@@ -2,10 +2,13 @@ import React, { useEffect, useState, useRef } from "react";
 import robotIcon from "./assets/robot-ai.png";
 
 // ----------- AI 聊天逻辑可和国际版复用 ----------------
-async function getAIReply(message) {
+async function getAIReply(message, chatMessages = []) {
   const apiKey = "sk-688fc2762d7c4b14b0a97bae8b646075";
   const url = "https://api.deepseek.com/v1/chat/completions";
-  const systemPrompt = "你是一个广州本地生活AI助手，请用标准普通话与用户交流，风格亲切、幽默，回答要短句优先，并能根据地图、吃喝玩乐、生活类问题给建议。";
+  const systemPrompt = `
+你是 Daka AI，一个知识渊博、风趣幽默的全能型聊天助手。你可以回答各种问题、闲聊、讲笑话、写代码、翻译，也能提供广州本地的生活建议。
+如果用户提到地点、美食、出行或旅游，你会优先结合本地信息提供建议。你说话简洁自然，像朋友一样聊天。
+`;
 
   try {
     const res = await fetch(url, {
@@ -18,6 +21,10 @@ async function getAIReply(message) {
         model: "deepseek-chat",
         messages: [
           { role: "system", content: systemPrompt },
+          ...(chatMessages || []).map(m => ({
+            role: m.user === "DAKA AI" ? "assistant" : "user",
+            content: m.text
+          })),
           { role: "user", content: message }
         ],
         temperature: 0.7,
@@ -273,7 +280,14 @@ function Appcn() {
     setChatInput("");
     setAiThinking(true);
     setTimeout(async () => {
-      const aiReply = await getAIReply(chatInput.trim());
+      // 取当前对话历史，不含本次输入
+      const msgs = [
+        ...chatMessages,
+        { user: "我", text: chatInput.trim() }
+      ];
+      // 传递全部历史，除最后一条“我”的再去掉最后一条以防重复
+      // 但此处直接传递chatMessages即可（不含本次输入），本次输入由message参数提供
+      const aiReply = await getAIReply(chatInput.trim(), chatMessages);
       setChatMessages(msgs => [...msgs, { user: "DAKA AI", text: aiReply }]);
       setAiThinking(false);
     }, 500);
