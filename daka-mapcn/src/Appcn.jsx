@@ -51,6 +51,8 @@ const mockPlaces = [
 ];
 
 function Appcn() {
+  // 移动端判断
+  const isMobile = window.innerWidth < 768;
   // 地图选择按钮统一样式
   const btnStyle = {
     width: 420,
@@ -209,14 +211,27 @@ function Appcn() {
       const script = document.createElement("script");
       script.src = "https://webapi.amap.com/maps?v=2.0&key=e401309b65cddb62e36775c65c4ebdac&plugin=AMap.Geocoder";
       script.async = true;
-      script.onload = () => initMap();
+      script.onload = () => {
+        if (window.AMap) initMap();
+      };
       document.body.appendChild(script);
     }
     function initMap() {
+      console.log("初始化地图");
+
+      const container = document.getElementById("mapContainer");
+
+      if (!container || container.clientWidth === 0 || container.clientHeight === 0) {
+        console.log("容器尺寸尚未就绪，延迟加载地图");
+        setTimeout(initMap, 300);
+        return;
+      }
+
       mapRef.current = new window.AMap.Map("mapContainer", {
         center: [113.2644, 23.1291],
         zoom: 13,
       });
+
       mapRef.current.on('click', function (e) {
         setAddModal({ visible: true, lat: e.lnglat.lat, lng: e.lnglat.lng });
       });
@@ -434,10 +449,10 @@ function Appcn() {
           ref={dragMapRef}
           style={{
             position: "absolute",
-            top: 40,
-            left: 410,
-            width: 700,
-            height: 500,
+            top: isMobile ? 20 : 40,
+            left: isMobile ? 20 : 410,
+            width: isMobile ? "90vw" : 700,
+            height: isMobile ? "50vh" : 500,
             zIndex: 10,
             background: "#222",
             borderRadius: 16,
@@ -446,7 +461,9 @@ function Appcn() {
             overflow: "hidden",
             cursor: "move",
             display: "flex",
-            flexDirection: "column"
+            flexDirection: "column",
+            minWidth: 300,
+            minHeight: 300
           }}
         >
           <div
