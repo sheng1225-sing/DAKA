@@ -50,6 +50,9 @@ const mockPlaces = [
 // Main App component
 // ===========================
 function App() {
+  // ***** 实时定位状态 *****
+  // Real-time user location state
+  const [userLocation, setUserLocation] = useState(null); // 实时定位
   // 国际/中国区入口选择
   const [mode, setMode] = useState(null); // "global" or "china"
   // 标准化入口按钮样式（缩小40%）
@@ -329,6 +332,31 @@ function App() {
         mapRef.current.addListener("click", function (e) {
           setAddModal({ visible: true, lat: e.latLng.lat(), lng: e.latLng.lng() });
         });
+
+        // 获取并显示用户实时位置
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition((position) => {
+            const pos = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            };
+            setUserLocation(pos);
+            const locationMarker = new window.google.maps.Marker({
+              position: pos,
+              map: mapRef.current,
+              title: "你的位置",
+              icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: "#4285F4",
+                fillOpacity: 1,
+                strokeWeight: 2,
+                strokeColor: "#fff",
+              },
+            });
+            mapRef.current.setCenter(pos);
+          });
+        }
       }
     };
 
@@ -376,7 +404,24 @@ function App() {
       marker.addListener("click", () => setSelectedPlace(place));
       markersRef.current.push(marker);
     });
-  }, [places, entered]);
+    // 用户实时位置 marker
+    if (userLocation && window.google && window.google.maps) {
+      const userMarker = new window.google.maps.Marker({
+        position: userLocation,
+        map: mapRef.current,
+        title: "你的位置",
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: "#4285F4",
+          fillOpacity: 1,
+          strokeWeight: 2,
+          strokeColor: "#fff",
+        },
+      });
+      markersRef.current.push(userMarker);
+    }
+  }, [places, entered, userLocation]);
 
   // ===========================
   // ***** 注册逻辑 *****
@@ -729,9 +774,41 @@ function App() {
             id="mapContainer"
             style={{ width: "100%", height: "400px", borderRadius: "10px", marginTop: 20 }}
           />
+          {/* 显示街景 */}
           {streetViewLoc && (
             <div id="pano" style={{ width: "100%", height: "400px", borderRadius: "10px", marginTop: 10 }} />
           )}
+          {/* 显示我的位置按钮 */}
+          <button
+            onClick={() => {
+              if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                  const pos = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                  };
+                  setUserLocation(pos);
+                  if (mapRef.current) {
+                    mapRef.current.setCenter(pos);
+                  }
+                });
+              }
+            }}
+            style={{
+              position: "absolute",
+              bottom: 20,
+              left: 20,
+              padding: "8px 12px",
+              backgroundColor: "#7ed957",
+              color: "#000",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              zIndex: 1000
+            }}
+          >
+            📍 显示我的位置
+          </button>
         </>
       )}
       {selectedPlace && (
