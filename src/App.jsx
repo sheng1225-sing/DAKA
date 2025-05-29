@@ -21,6 +21,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 import React, { useEffect, useState, useRef } from "react";
+import Appcn from "../daka-mapcn/src/Appcn.jsx"; // 你的中国区高德地图组件，路径按实际调整
 
 // ***** 示例地点数据 *****
 // Mock places data for initial map display (used if no localStorage)
@@ -49,6 +50,25 @@ const mockPlaces = [
 // Main App component
 // ===========================
 function App() {
+  // 国际/中国区入口选择
+  const [mode, setMode] = useState(null); // "global" or "china"
+  // 标准化入口按钮样式（缩小40%）
+  const btnStyle = {
+    width: 252,             // 原 420，缩小 40%
+    height: 54,             // 原 90，缩小 40%
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 11,                // 原 18，缩小 40%
+    fontSize: "1.3rem",     // 原 2.2rem，缩小 40%
+    whiteSpace: "nowrap",
+    background: "#000",
+    color: "#fff",
+    border: "3px solid #fff",
+    borderRadius: 12,       // 原 20，缩小 40%
+    margin: "20px 0",       // 原 32px，缩小 40%
+    cursor: "pointer",
+  };
   // ===========================
   // ***** 主要状态管理 *****
   // Main state management for page logic
@@ -380,11 +400,42 @@ function App() {
     setRegPassword("");
   };
 
-  //**** 启动页（未进入地图前） ****
-  // ===========================
-  // ***** 启动页渲染 *****
-  // Render landing page before entering map
-  // ===========================
+  //**** 国际/中国区入口选择页面 ****
+  if (!mode) {
+    return (
+      <div style={{
+        background: "#000", color: "#fff", width: "100vw", height: "100vh",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center"
+      }}>
+        <img
+          src="/LOGO.png"
+          alt="Logo"
+          style={{
+            width: "120px",
+            height: "120px",
+            borderRadius: "50%",
+            objectFit: "contain",
+            marginBottom: "1.5rem",
+            border: "2px solid #fff",
+            backgroundColor: "#000"
+          }}
+        />
+        <h1 style={{ fontSize: 44, marginBottom: 20 }}>Daka 打卡地图</h1>
+        <button onClick={() => setMode("global")} style={btnStyle}>
+          🌍 国际版（Google地图）
+        </button>
+        <button onClick={() => setMode("china")} style={btnStyle}>
+          🇨🇳 中国区（高德地图）
+        </button>
+      </div>
+    );
+  }
+  if (mode === "china") {
+    return (
+      <Appcn setMode={setMode} />
+    );
+  }
+  //**** 启动页（未进入地图前） - 国际版分支 ****
   if (!entered) {
     return (
       <>
@@ -402,8 +453,31 @@ function App() {
             justifyContent: "center",
             textAlign: "center",
             padding: "80px 20px 0 20px",
-            boxSizing: "border-box"
+            boxSizing: "border-box",
+            position: "relative"
           }}>
+          {/* 返回主页按钮（国际版启动页，绝对定位左上角） */}
+          <button
+            onClick={() => {
+              setMode(null);
+              setEntered(false);
+            }}
+            style={{
+              position: "absolute",
+              top: 24,
+              left: 24,
+              background: "#222",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 18px",
+              fontSize: 16,
+              cursor: "pointer",
+              zIndex: 99,
+            }}
+          >
+            返回主页
+          </button>
           <img
             src="/LOGO.png"
             alt="Logo"
