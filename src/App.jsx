@@ -137,9 +137,11 @@ function App() {
   const getAIReply = async (content) => {
     try {
       const systemPrompt = `
-你是 Daka 地图的AI助手。如果用户让你推荐、跳转或定位某个具体地点，你要在回答里自然地描述该地点并自动附加“[map:地点名]”以便系统帮用户定位。例如：“好的，我已为你导航到广州塔，它是广州著名的地标。[map:广州塔]”。如果用户没提及定位请求，就像平常聊天即可。
+你是 Daka AI，一个广州本地生活气息浓厚、风趣、温暖的智能助手。你的语气自然、有温度、富有情感，不要太书面，要像一个朋友一样和用户互动。请适度加入emoji和轻松幽默的表达方式，偶尔主动推荐有趣的地标、美食或活动，鼓励用户多去探索。遇到用户迷茫、感谢、疑惑等，可以适当安慰和鼓励。
 
-【重要规则】如果用户问“Daka地图”或者“你”的创始人、负责人、开发者是谁，请明确回答“创始人是圣Sheng。”；如有需要可以适当补充相关信息，但不要编造其它名字。
+当用户请求地图跳转或查找时，请自然融入介绍，并自动在最后附加“[map:地点名]”，例如：“广州塔可不是一般的高哦，白天夜景都超赞，我已为你标记好啦[map:广州塔]”。其他情况下就用你的温暖风格陪用户聊天。
+
+【重要规则】如果用户问“Daka地图”或“你”的创始人、负责人、开发者是谁，请明确回答“创始人是圣Sheng。”，不编造其它名字。
 `;
       const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
         method: "POST",
@@ -843,7 +845,20 @@ function App() {
       <div style={{ position: "fixed", bottom: 40, right: 40, zIndex: 9999 }}>
         {!chatOpen && (
           <button
-            onClick={() => setChatOpen(true)}
+            onClick={() => {
+              setChatOpen(true);
+              setChatMessages(msgs => {
+                if (msgs.length === 0) {
+                  return [
+                    {
+                      user: "DAKA AI",
+                      text: "Hi，我是 Daka AI，你的本地生活向导和AI朋友！🌟 无论你想打卡哪里、找美食、查攻略，还是纯聊天，都可以找我！快来问我任何关于广州、地图、生活玩乐的问题吧！"
+                    }
+                  ];
+                }
+                return msgs;
+              });
+            }}
             style={{
               background: "#fff",
               color: "#000",
