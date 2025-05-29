@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import robotIcon from "./assets/robot-ai.png";
 
 // ----------- AI 聊天逻辑可和国际版复用 ----------------
@@ -32,7 +32,14 @@ async function getAIReply(message, chatMessages = []) {
     });
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || "AI 暂时没有回复，请稍后再试。";
+    let reply = data.choices?.[0]?.message?.content || "AI 暂时没有回复，请稍后再试。";
+    // 检查回复中是否包含地址、地点、位置关键词，并自动插入 [map:地址]
+    const addressPattern = /(?:地址|地点|位置)[：:]?\s*([\u4e00-\u9fa5a-zA-Z0-9\s\-，,]+?)(?:。|！|!|\n|$)/;
+    const match = reply.match(addressPattern);
+    if (match) {
+      reply += ` [map:${match[1].trim()}]`;
+    }
+    return reply;
   } catch (err) {
     return "AI 连接失败，请稍后再试。";
   }
@@ -123,6 +130,21 @@ function Appcn() {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages, aiThinking]);
+  // 聊天输入框移动端键盘遮挡适配
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isMobile) {
+        setTimeout(() => {
+          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 300);
+      }
+    };
+    const input = document.querySelector("input");
+    if (input) input.addEventListener("focus", handleFocus);
+    return () => {
+      if (input) input.removeEventListener("focus", handleFocus);
+    };
+  }, []);
   // 地图展开/收起
   const [mapExpanded, setMapExpanded] = useState(false);
 
@@ -142,6 +164,7 @@ function Appcn() {
     let offsetX = 0;
     let offsetY = 0;
 
+    // 鼠标拖动
     const handleMouseDown = (e) => {
       isDragging = true;
       offsetX = e.clientX - el.offsetLeft;
@@ -162,10 +185,35 @@ function Appcn() {
       document.removeEventListener("mouseup", handleMouseUp);
     };
 
+    // 触屏拖动
+    const handleTouchStart = (e) => {
+      isDragging = true;
+      const touch = e.touches[0];
+      offsetX = touch.clientX - el.offsetLeft;
+      offsetY = touch.clientY - el.offsetTop;
+      document.addEventListener("touchmove", handleTouchMove);
+      document.addEventListener("touchend", handleTouchEnd);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDragging) return;
+      const touch = e.touches[0];
+      el.style.left = `${touch.clientX - offsetX}px`;
+      el.style.top = `${touch.clientY - offsetY}px`;
+    };
+
+    const handleTouchEnd = () => {
+      isDragging = false;
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+
     el.addEventListener("mousedown", handleMouseDown);
+    el.addEventListener("touchstart", handleTouchStart);
 
     return () => {
       el.removeEventListener("mousedown", handleMouseDown);
+      el.removeEventListener("touchstart", handleTouchStart);
     };
   }, []);
 
@@ -178,6 +226,7 @@ function Appcn() {
     let offsetX = 0;
     let offsetY = 0;
 
+    // 鼠标拖动
     const handleMouseDown = (e) => {
       isDragging = true;
       offsetX = e.clientX - el.offsetLeft;
@@ -198,10 +247,35 @@ function Appcn() {
       document.removeEventListener("mouseup", handleMouseUp);
     };
 
+    // 触屏拖动
+    const handleTouchStart = (e) => {
+      isDragging = true;
+      const touch = e.touches[0];
+      offsetX = touch.clientX - el.offsetLeft;
+      offsetY = touch.clientY - el.offsetTop;
+      document.addEventListener("touchmove", handleTouchMove);
+      document.addEventListener("touchend", handleTouchEnd);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDragging) return;
+      const touch = e.touches[0];
+      el.style.left = `${touch.clientX - offsetX}px`;
+      el.style.top = `${touch.clientY - offsetY}px`;
+    };
+
+    const handleTouchEnd = () => {
+      isDragging = false;
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+
     el.addEventListener("mousedown", handleMouseDown);
+    el.addEventListener("touchstart", handleTouchStart);
 
     return () => {
       el.removeEventListener("mousedown", handleMouseDown);
+      el.removeEventListener("touchstart", handleTouchStart);
     };
   }, []);
 
@@ -218,8 +292,9 @@ function Appcn() {
       return;
     }
     if (!window.AMap) {
+      // 插件参数加入AMap.Geocoder,AMap.Geolocation,AMap.Walking
       const script = document.createElement("script");
-      script.src = "https://webapi.amap.com/maps?v=2.0&key=e401309b65cddb62e36775c65c4ebdac&plugin=AMap.Geocoder";
+      script.src = "https://webapi.amap.com/maps?v=2.0&key=e401309b65cddb62e36775c65c4ebdac&plugin=AMap.Geocoder,AMap.Geolocation,AMap.Walking";
       script.async = true;
       script.onload = () => {
         if (window.AMap) initMap();
@@ -242,6 +317,24 @@ function Appcn() {
         zoom: 13,
       });
 
+      // 获取用户当前位置
+      window.AMap.plugin('AMap.Geolocation', function () {
+        const geolocation = new window.AMap.Geolocation({
+          enableHighAccuracy: true,
+          timeout: 10000,
+        });
+        mapRef.current.addControl(geolocation);
+        geolocation.getCurrentPosition(function (status, result) {
+          if (status === 'complete' && result.position) {
+            const lng = result.position.lng;
+            const lat = result.position.lat;
+            window.currentPosition = [lng, lat]; // 存储为全局变量
+          } else {
+            console.warn("定位失败", result);
+          }
+        });
+      });
+
       mapRef.current.on('click', function (e) {
         setAddModal({ visible: true, lat: e.lnglat.lat, lng: e.lnglat.lng });
       });
@@ -250,6 +343,21 @@ function Appcn() {
   }, [entered]);
 
   // ------ 渲染marker ------
+  // 步行导航路线绘制
+  const drawRoute = (start, end) => {
+    if (!window.AMap || !mapRef.current) return;
+    window.AMap.plugin('AMap.Walking', function () {
+      const walking = new window.AMap.Walking({
+        map: mapRef.current
+      });
+      walking.search(start, end, function (status, result) {
+        if (status !== 'complete') {
+          console.warn("步行路径规划失败", result);
+        }
+      });
+    });
+  };
+
   useEffect(() => {
     if (!entered || !mapRef.current) return;
     if (markersRef.current) markersRef.current.forEach(m => m.setMap(null));
@@ -260,7 +368,12 @@ function Appcn() {
         title: place.name,
         map: mapRef.current
       });
-      marker.on("click", () => setSelectedPlace(place));
+      marker.on("click", () => {
+        setSelectedPlace(place);
+        if (window.currentPosition) {
+          drawRoute(window.currentPosition, [place.lng, place.lat]);
+        }
+      });
       markersRef.current.push(marker);
     });
   }, [places, entered]);
