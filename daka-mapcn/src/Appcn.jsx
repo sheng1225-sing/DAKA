@@ -904,7 +904,9 @@ function Appcn() {
                 flexDirection: "column",
                 boxSizing: "border-box",
                 boxShadow: "none",
-                border: "none"
+                border: "none",
+                height: "100%",
+                minHeight: 0
               }}
             >
               <button
@@ -924,104 +926,126 @@ function Appcn() {
               </button>
               <div style={{ marginBottom: 8, fontWeight: "bold", fontSize: 18, color: "#fff" }}>
                 Daka 聊天室（{chatMode === "AI" ? "AI 模式" : "用户模式"}）
+              </div>
+              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                 <button
-                  onClick={() => setChatMode(prev => prev === "AI" ? "User" : "AI")}
+                  onClick={() => setChatMode("AI")}
                   style={{
-                    marginLeft: 12,
+                    flex: 1,
                     fontSize: 14,
-                    background: "#444",
-                    color: "#fff",
+                    background: chatMode === "AI" ? "#7ed957" : "#444",
+                    color: chatMode === "AI" ? "#000" : "#fff",
                     border: "none",
                     borderRadius: 4,
-                    padding: "2px 8px",
+                    padding: "6px 10px",
                     cursor: "pointer"
                   }}
                 >
-                  切换为{chatMode === "AI" ? "用户聊天室" : "AI 聊天室"}
+                  AI 模式
                 </button>
-              </div>
-              <div style={{
-                flex: 1,
-                overflowY: "auto",
-                background: "#111",
-                borderRadius: 8,
-                padding: 8,
-                marginBottom: 8,
-                color: "#eee",
-                maxHeight: isSmallMobile
-                  ? "calc(60vh - 120px)"
-                  : isMobile
-                  ? "calc(80vh - 120px)"
-                  : "calc(80vh - 120px)",
-                scrollBehavior: "smooth"
-              }}>
-                {chatMode === "AI" ? (
-                  chatMessages.length === 0 ? (
-                    <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div>
-                  ) : (
-                    chatMessages.map((msg, i) => (
-                      <div key={i} style={{ margin: "8px 0" }}>
-                        <span style={{ fontWeight: "bold", color: "#7ed957" }}>{msg.user}</span>
-                        <span style={{ marginLeft: 10 }}>{msg.text}</span>
-                      </div>
-                    ))
-                  )
-                ) : (
-                  Object.keys(userChatMessages).length === 0 ? (
-                    <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无用户消息</div>
-                  ) : (
-                    Object.keys(userChatMessages).map((email, i) => (
-                      <div key={i} style={{ marginBottom: 20 }}>
-                        <div style={{ fontWeight: "bold", color: "#7ed957", fontSize: 16, marginBottom: 6 }}>
-                          👤 {email}
-                        </div>
-                        {userChatMessages[email].map((msg, j) => (
-                          <div key={j} style={{ margin: "6px 0" }}>
-                            <span>{msg.text}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))
-                  )
-                )}
-                {aiThinking && chatMode === "AI" && (
-                  <div style={{ color: "#7ed957", margin: "8px 0", fontWeight: "bold" }}>
-                    DAKA AI 正在输入...
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-              <div style={{ width: "100%" }}>
-                <input
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={async e => {
-                    if (e.key === "Enter") {
-                      if (chatMode === "AI") sendMessage();
-                      else sendUserMessage();
-                    }
-                  }}
-                  placeholder="输入消息并回车发送"
-                  style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff" }}
-                />
                 <button
-                  onClick={async () => {
-                    if (chatMode === "AI") sendMessage();
-                    else sendUserMessage();
-                  }}
+                  onClick={() => setChatMode("User")}
                   style={{
-                    marginTop: 8,
-                    width: "100%",
-                    borderRadius: 6,
-                    background: "#7ed957",
-                    color: "#000",
+                    flex: 1,
+                    fontSize: 14,
+                    background: chatMode === "User" ? "#7ed957" : "#444",
+                    color: chatMode === "User" ? "#000" : "#fff",
                     border: "none",
-                    padding: 10,
-                    fontWeight: "bold"
+                    borderRadius: 4,
+                    padding: "6px 10px",
+                    cursor: "pointer"
                   }}
                 >
-                  发送
+                  用户模式
                 </button>
+              </div>
+              {/* Main scrollable chat area with fixed controls/input */}
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden"
+                }}
+              >
+                <div style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  background: "#111",
+                  borderRadius: 8,
+                  padding: 8,
+                  marginBottom: 8,
+                  color: "#eee",
+                  scrollBehavior: "smooth"
+                }}>
+                  {chatMode === "AI" ? (
+                    chatMessages.length === 0 ? (
+                      <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div>
+                    ) : (
+                      chatMessages.map((msg, i) => (
+                        <div key={i} style={{ margin: "8px 0" }}>
+                          <span style={{ fontWeight: "bold", color: "#7ed957" }}>{msg.user}</span>
+                          <span style={{ marginLeft: 10 }}>{msg.text}</span>
+                        </div>
+                      ))
+                    )
+                  ) : (
+                    Object.keys(userChatMessages).length === 0 ? (
+                      <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无用户消息</div>
+                    ) : (
+                      Object.keys(userChatMessages).map((email, i) => (
+                        <div key={i} style={{ marginBottom: 20 }}>
+                          <div style={{ fontWeight: "bold", color: "#7ed957", fontSize: 16, marginBottom: 6 }}>
+                            👤 {email}
+                          </div>
+                          {userChatMessages[email].map((msg, j) => (
+                            <div key={j} style={{ margin: "6px 0" }}>
+                              <span>{msg.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))
+                    )
+                  )}
+                  {aiThinking && chatMode === "AI" && (
+                    <div style={{ color: "#7ed957", margin: "8px 0", fontWeight: "bold" }}>
+                      DAKA AI 正在输入...
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div style={{ width: "100%" }}>
+                  <input
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === "Enter") {
+                        if (chatMode === "AI") sendMessage();
+                        else sendUserMessage();
+                      }
+                    }}
+                    placeholder="输入消息并回车发送"
+                    style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff" }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (chatMode === "AI") sendMessage();
+                      else sendUserMessage();
+                    }}
+                    style={{
+                      marginTop: 8,
+                      width: "100%",
+                      borderRadius: 6,
+                      background: "#7ed957",
+                      color: "#000",
+                      border: "none",
+                      padding: 10,
+                      fontWeight: "bold"
+                    }}
+                  >
+                    发送
+                  </button>
+                </div>
               </div>
             </div>
           )}
