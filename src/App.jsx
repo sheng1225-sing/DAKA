@@ -1,3 +1,19 @@
+// ===== Firebase 引入与初始化 =====
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, doc, addDoc, query, where, orderBy, onSnapshot } from "firebase/firestore";
+
+// ===== Firebase 配置与 Firestore 初始化 =====
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "SENDER_ID",
+  appId: "APP_ID"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 // ===========================
 // App 组件主入口
 // Main App component entry point
@@ -132,14 +148,17 @@ function App() {
   });
 
   // ===========================
-  // ***** 聊天室 & AI助手相关状态 *****
-  // Chatbox and AI assistant state
+  // ***** 聊天室 & AI助手相关状态 + 用户私聊支持 *****
+  // Chatbox and AI assistant state (with user-to-user chat)
   // ===========================
   const [chatOpen, setChatOpen] = useState(false); // 聊天框是否打开 / Is chatbox open
   const [chatInput, setChatInput] = useState(""); // 聊天输入框内容 / Chat input
-  const [chatMessages, setChatMessages] = useState([]); // 聊天消息列表 / Chat messages
-  const [aiMode, setAiMode] = useState(true); // 是否AI模式 / Is AI mode enabled
+  const [chatMessages, setChatMessages] = useState([]); // 聊天消息列表 / Chat messages (AI)
   const [aiThinking, setAiThinking] = useState(false); // AI助手是否思考中 / Is AI assistant thinking
+  // 新增：聊天模式、目标用户、私聊历史
+  const [chatMode, setChatMode] = useState("ai"); // "ai" 或 "user"
+  const [targetUser, setTargetUser] = useState(""); // 当前聊天对象用户名
+  const [privateMessages, setPrivateMessages] = useState({}); // {username: [msg1, msg2, ...]}
 
   // ===========================
   // ***** 街景相关状态 *****
@@ -157,7 +176,7 @@ function App() {
   // ***** 获取AI助手回复函数 *****
   // Fetch AI assistant reply from Deepseek API
   // ===========================
-  const getAIReply = async (content) => {
+  const getAIReply = async (content, location = null) => {
     try {
       const systemPrompt = `
 你是 Daka AI，一个广州本地生活气息浓厚、风趣、温暖的智能助手。你的语气自然、有温度、富有情感，不要太书面，要像一个朋友一样和用户互动。请适度加入emoji和轻松幽默的表达方式，偶尔主动推荐有趣的地标、美食或活动，鼓励用户多去探索。遇到用户迷茫、感谢、疑惑等，可以适当安慰和鼓励。
@@ -166,6 +185,7 @@ function App() {
 
 【重要规则】如果用户问“Daka地图”或“你”的创始人、负责人、开发者是谁，请明确回答“创始人是圣Sheng。”，不编造其它名字。
 `;
+      const locationNote = location ? `用户当前位置约为：纬度 ${location.lat}，经度 ${location.lng}。请结合其位置为他提供个性化建议。\n\n` : "";
       const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -176,7 +196,7 @@ function App() {
           model: "deepseek-chat",
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content }
+            { role: "user", content: locationNote + content }
           ]
         })
       });
@@ -188,22 +208,33 @@ function App() {
   };
 
   // ===========================
-  // ***** 聊天消息发送函数 *****
-  // Send chat message, trigger AI reply if AI mode enabled
+  // ***** 聊天消息发送函数（支持AI与用户私聊） *****
+  // Send chat message, support AI and user-to-user mode
   // ===========================
   const sendMessage = async () => {
     if (!chatInput.trim()) return;
-    setChatMessages(msgs => [...msgs, { user: (googleUser?.name || username || "我"), text: chatInput.trim() }]);
-    if (aiMode) {
-      const userMsg = chatInput.trim();
+    const from = googleUser?.name || username || "我";
+    const msg = { user: from, text: chatInput.trim() };
+
+    if (chatMode === "ai") {
+      setChatMessages(msgs => [...msgs, msg]);
       setChatInput("");
       setAiThinking(true);
-      setTimeout(async () => {
-        const aiReply = await getAIReply(userMsg);
-        setChatMessages(msgs => [...msgs, { user: "DAKA AI", text: aiReply }]);
-        setAiThinking(false);
-      }, 300);
+      const aiReply = await getAIReply(chatInput.trim(), userLocation);
+      setChatMessages(msgs => [...msgs, { user: "DAKA AI", text: aiReply }]);
+      setAiThinking(false);
     } else {
+      if (!targetUser) {
+        alert("请输入对方用户名");
+        return;
+      }
+      // 写入 Firestore
+      await addDoc(collection(db, "messages"), {
+        from: from,
+        to: targetUser,
+        text: chatInput.trim(),
+        timestamp: Date.now()
+      });
       setChatInput("");
     }
   };
@@ -1020,7 +1051,7 @@ function App() {
         )}
         {chatOpen && (
           <div style={{
-            width: 320, height: 420, background: "#222", borderRadius: 16,
+            width: 320, height: 470, background: "#222", borderRadius: 16,
             boxShadow: "0 4px 20px rgba(0,0,0,0.25)", padding: 16, display: "flex", flexDirection: "column"
           }}>
             {/* 全局CSS for dot-flash */}
@@ -1042,23 +1073,37 @@ function App() {
             `}
             </style>
             <div style={{ marginBottom: 8, fontWeight: "bold", fontSize: 18, color: "#fff" }}>
-              {/* AI切换按钮 */}
-              <button
-                onClick={() => setAiMode(m => !m)}
-                style={{
-                  float: "left",
-                  background: aiMode ? "#7ed957" : "#444",
-                  color: "#000",
-                  border: "none",
-                  borderRadius: 6,
-                  marginRight: 12,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  padding: "3px 10px"
-                }}
-              >
-                {aiMode ? "DAKA AI 模式" : "普通"}
-              </button>
+              {/* 聊天模式切换按钮 */}
+              <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                <button
+                  onClick={() => setChatMode("ai")}
+                  style={{
+                    background: chatMode === "ai" ? "#7ed957" : "#444",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 12px",
+                    fontWeight: "bold",
+                    cursor: "pointer"
+                  }}
+                >
+                  DAKA AI
+                </button>
+                <button
+                  onClick={() => setChatMode("user")}
+                  style={{
+                    background: chatMode === "user" ? "#7ed957" : "#444",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 12px",
+                    fontWeight: "bold",
+                    cursor: "pointer"
+                  }}
+                >
+                  用户私聊
+                </button>
+              </div>
               Daka 聊天室
               <button
                 onClick={() => {
@@ -1068,19 +1113,38 @@ function App() {
                 style={{ float: "right", background: "none", color: "#fff", border: "none", fontSize: 20, cursor: "pointer" }}
               >×</button>
             </div>
+            {/* 私聊目标输入框，仅在用户模式下显示 */}
+            {chatMode === "user" && (
+              <input
+                placeholder="输入对方用户名"
+                value={targetUser}
+                onChange={(e) => setTargetUser(e.target.value)}
+                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff", marginBottom: 8 }}
+              />
+            )}
             <div style={{
               flex: 1, overflowY: "auto", background: "#111", borderRadius: 8, padding: 8, marginBottom: 8, color: "#eee"
             }}>
-              {chatMessages.length === 0 ? <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div> : (
-                chatMessages.map((msg, i) => (
+              {chatMode === "ai" ? (
+                chatMessages.length === 0 ? (
+                  <div style={{ color: "#666", textAlign: "center", marginTop: 32 }}>暂无消息</div>
+                ) : (
+                  chatMessages.map((msg, i) => (
+                    <div key={i} style={{ margin: "8px 0" }}>
+                      <span style={{ fontWeight: "bold", color: "#7ed957" }}>{msg.user}</span>
+                      <span style={{ marginLeft: 10 }}>{msg.text}</span>
+                    </div>
+                  ))
+                )
+              ) : (
+                ((privateMessages[username < targetUser ? `${username}_${targetUser}` : `${targetUser}_${username}`] || []).map((msg, i) => (
                   <div key={i} style={{ margin: "8px 0" }}>
                     <span style={{ fontWeight: "bold", color: "#7ed957" }}>{msg.user}</span>
                     <span style={{ marginLeft: 10 }}>{msg.text}</span>
                   </div>
                 ))
               )}
-              {/* AI助手正在输入... */}
-              {aiThinking && (
+              {chatMode === "ai" && aiThinking && (
                 <div style={{ color: "#7ed957", margin: "8px 0", fontWeight: "bold" }}>
                   DAKA AI 正在输入<span className="dot-flash">...</span>
                 </div>
@@ -1095,45 +1159,50 @@ function App() {
               placeholder="输入消息并回车发送"
               style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #444", background: "#000", color: "#fff" }}
             />
-            {/* 文件上传按钮，紧跟聊天输入框下方 */}
-            <input
-              type="file"
-              accept=".txt,.pdf,.doc,.docx,.png,.jpg,.jpeg"
-              onChange={async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                  if (file.type === "text/plain" || file.name.endsWith(".txt")) {
-                    // TXT文本直接读取
-                    const reader = new FileReader();
-                    reader.onload = async () => {
-                      const content = reader.result;
-                      setChatMessages(msgs => [...msgs, { user: (googleUser?.name || username || "我"), text: `[文件] ${file.name}` }]);
-                      setAiThinking(true);
-                      const aiReply = await getAIReply(`以下是用户上传的文件内容，请帮解读、总结或翻译：\n\n${content}`);
-                      setChatMessages(msgs => [...msgs, { user: "AI助手", text: aiReply }]);
-                      setAiThinking(false);
-                    };
-                    reader.readAsText(file);
-                  } else if (
-                    file.type === "application/pdf" || file.name.endsWith(".pdf") ||
-                    file.type === "application/msword" || file.name.endsWith(".doc") ||
-                    file.name.endsWith(".docx") ||
-                    file.type.startsWith("image/")
-                  ) {
-                    alert("PDF/Word/图片文件需要后端解析，当前前端仅支持txt，后续会升级支持所有文档类型。");
-                  } else {
-                    alert("暂不支持该类型文件。");
+            {/* 文件上传按钮，紧跟聊天输入框下方，仅AI模式可用 */}
+            {chatMode === "ai" && (
+              <input
+                type="file"
+                accept=".txt,.pdf,.doc,.docx,.png,.jpg,.jpeg"
+                onChange={async (e) => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    if (file.type === "text/plain" || file.name.endsWith(".txt")) {
+                      // TXT文本直接读取
+                      const reader = new FileReader();
+                      reader.onload = async () => {
+                        const content = reader.result;
+                        setChatMessages(msgs => [...msgs, { user: (googleUser?.name || username || "我"), text: `[文件] ${file.name}` }]);
+                        setAiThinking(true);
+                        const aiReply = await getAIReply(`以下是用户上传的文件内容，请帮解读、总结或翻译：\n\n${content}`);
+                        setChatMessages(msgs => [...msgs, { user: "AI助手", text: aiReply }]);
+                        setAiThinking(false);
+                      };
+                      reader.readAsText(file);
+                    } else if (
+                      file.type === "application/pdf" || file.name.endsWith(".pdf") ||
+                      file.type === "application/msword" || file.name.endsWith(".doc") ||
+                      file.name.endsWith(".docx") ||
+                      file.type.startsWith("image/")
+                    ) {
+                      alert("PDF/Word/图片文件需要后端解析，当前前端仅支持txt，后续会升级支持所有文档类型。");
+                    } else {
+                      alert("暂不支持该类型文件。");
+                    }
                   }
-                }
-              }}
-              style={{ marginTop: 8, marginBottom: 8 }}
-            />
+                }}
+                style={{ marginTop: 8, marginBottom: 8 }}
+              />
+            )}
             <button
               onClick={sendMessage}
               style={{ marginTop: 8, width: "100%", borderRadius: 6, background: "#7ed957", color: "#000", border: "none", padding: 10, fontWeight: "bold" }}
             >
               发送
             </button>
+            <div style={{ color: "#888", fontSize: 12, marginTop: 2, textAlign: "center" }}>
+              当前为本地端对端示范，数据不会发送到服务器，刷新后将丢失。
+            </div>
           </div>
         )}
       </div>
@@ -1149,3 +1218,24 @@ export default function WrappedApp() {
     </GoogleOAuthProvider>
   );
 }
+
+  // ====== Firestore 实时消息监听 ======
+useEffect(() => {
+  if (chatMode !== "user" || !username || !targetUser) return;
+
+  const q = query(
+    collection(db, "messages"),
+    where("from", "in", [username, targetUser]),
+    where("to", "in", [username, targetUser]),
+    orderBy("timestamp", "asc")
+  );
+
+  const unsub = onSnapshot(q, (snapshot) => {
+    const msgs = snapshot.docs.map(doc => doc.data());
+    const key = username < targetUser ? `${username}_${targetUser}` : `${targetUser}_${username}`;
+    const grouped = { [key]: msgs.map(msg => ({ user: msg.from, text: msg.text })) };
+    setPrivateMessages(grouped);
+  });
+
+  return () => unsub();
+}, [chatMode, username, targetUser]);
